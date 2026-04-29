@@ -17,13 +17,13 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 # Requirement id alone: TEST_0020 / UID_1964
-REQ_ID_ONLY_RE = re.compile(r'^((?:TEST|UID)_\d+)\s*$', re.I)
+REQ_ID_ONLY_RE = re.compile(r"^((?:TEST|UID)_\d+)\s*$", re.I)
 
 # Requirement id + inline text on same line: TEST_00010 some text
-REQ_ID_INLINE_RE = re.compile(r'^((?:TEST|UID)_\d+)(?:\s+(.*?))?\s*$', re.I | re.S)
+REQ_ID_INLINE_RE = re.compile(r"^((?:TEST|UID)_\d+)(?:\s+(.*?))?\s*$", re.I | re.S)
 
 # Word heading styles
-HEADING_NUM_RE = re.compile(r'^Heading\s+(\d+)$', re.I)
+HEADING_NUM_RE = re.compile(r"^Heading\s+(\d+)$", re.I)
 
 Block = Union[Paragraph, Table]
 REQ_LEVELS_SUPPORTED = (2, 3, 4, 5)  # Heading 2..5 => Req Level 1..4
@@ -34,7 +34,9 @@ def iter_block_items(parent) -> Iterator[Block]:
     if isinstance(parent, _Cell):
         parent_elm = parent._tc
     else:
-        parent_elm = parent.element.body if hasattr(parent.element, 'body') else parent._element
+        parent_elm = (
+            parent.element.body if hasattr(parent.element, "body") else parent._element
+        )
 
     for child in parent_elm.iterchildren():
         if isinstance(child, CT_P):
@@ -62,43 +64,43 @@ def append_table_copy(dst_doc: Document, src_tbl: Table) -> None:
 
 
 def heading_level(para: Paragraph) -> Optional[int]:
-    style_name = para.style.name if para.style is not None else ''
+    style_name = para.style.name if para.style is not None else ""
     m = HEADING_NUM_RE.match(style_name)
     return int(m.group(1)) if m else None
 
 
 def normalize_text(text: str) -> str:
-    return text.replace('\xa0', ' ').strip()
+    return text.replace("\xa0", " ").strip()
 
 
 def set_cell_border_none(cell: _Cell) -> None:
     tcPr = cell._tc.get_or_add_tcPr()
     tcBorders = tcPr.first_child_found_in("w:tcBorders")
     if tcBorders is None:
-        tcBorders = OxmlElement('w:tcBorders')
+        tcBorders = OxmlElement("w:tcBorders")
         tcPr.append(tcBorders)
 
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        elem = tcBorders.find(qn(f'w:{edge}'))
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        elem = tcBorders.find(qn(f"w:{edge}"))
         if elem is None:
-            elem = OxmlElement(f'w:{edge}')
+            elem = OxmlElement(f"w:{edge}")
             tcBorders.append(elem)
-        elem.set(qn('w:val'), 'nil')
+        elem.set(qn("w:val"), "nil")
 
 
 def set_table_borders_none(table: Table) -> None:
     tblPr = table._tbl.tblPr
     tblBorders = tblPr.first_child_found_in("w:tblBorders")
     if tblBorders is None:
-        tblBorders = OxmlElement('w:tblBorders')
+        tblBorders = OxmlElement("w:tblBorders")
         tblPr.append(tblBorders)
 
-    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-        elem = tblBorders.find(qn(f'w:{edge}'))
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        elem = tblBorders.find(qn(f"w:{edge}"))
         if elem is None:
-            elem = OxmlElement(f'w:{edge}')
+            elem = OxmlElement(f"w:{edge}")
             tblBorders.append(elem)
-        elem.set(qn('w:val'), 'nil')
+        elem.set(qn("w:val"), "nil")
 
     for row in table.rows:
         for cell in row.cells:
@@ -106,7 +108,11 @@ def set_table_borders_none(table: Table) -> None:
 
 
 def remove_cell_default_paragraph(cell: _Cell) -> None:
-    if len(cell.paragraphs) == 1 and not cell.paragraphs[0].text and len(cell.tables) == 0:
+    if (
+        len(cell.paragraphs) == 1
+        and not cell.paragraphs[0].text
+        and len(cell.tables) == 0
+    ):
         p = cell.paragraphs[0]
         p._element.getparent().remove(p._element)
 
@@ -139,23 +145,23 @@ def add_num_instance(doc: Document, abstract_num_id: int = 1) -> int:
     for each Heading 1 section.
     """
     numbering = doc.part.numbering_part.element
-    nums = numbering.findall(qn('w:num'))
-    max_num = max((int(n.get(qn('w:numId'))) for n in nums), default=0)
+    nums = numbering.findall(qn("w:num"))
+    max_num = max((int(n.get(qn("w:numId"))) for n in nums), default=0)
     new_id = max_num + 1
 
-    num = OxmlElement('w:num')
-    num.set(qn('w:numId'), str(new_id))
+    num = OxmlElement("w:num")
+    num.set(qn("w:numId"), str(new_id))
 
-    abs_id = OxmlElement('w:abstractNumId')
-    abs_id.set(qn('w:val'), str(abstract_num_id))
+    abs_id = OxmlElement("w:abstractNumId")
+    abs_id.set(qn("w:val"), str(abstract_num_id))
     num.append(abs_id)
 
     for ilvl in range(4):
-        lvl_override = OxmlElement('w:lvlOverride')
-        lvl_override.set(qn('w:ilvl'), str(ilvl))
+        lvl_override = OxmlElement("w:lvlOverride")
+        lvl_override.set(qn("w:ilvl"), str(ilvl))
 
-        start_override = OxmlElement('w:startOverride')
-        start_override.set(qn('w:val'), '1')
+        start_override = OxmlElement("w:startOverride")
+        start_override.set(qn("w:val"), "1")
 
         lvl_override.append(start_override)
         num.append(lvl_override)
@@ -167,17 +173,17 @@ def add_num_instance(doc: Document, abstract_num_id: int = 1) -> int:
 def set_paragraph_numbering(p: Paragraph, num_id: int, ilvl: int) -> None:
     """Force paragraph numbering to use a specific numbering instance and level."""
     pPr = p._p.get_or_add_pPr()
-    existing = pPr.find(qn('w:numPr'))
+    existing = pPr.find(qn("w:numPr"))
     if existing is not None:
         pPr.remove(existing)
 
-    numPr = OxmlElement('w:numPr')
+    numPr = OxmlElement("w:numPr")
 
-    ilvl_el = OxmlElement('w:ilvl')
-    ilvl_el.set(qn('w:val'), str(ilvl))
+    ilvl_el = OxmlElement("w:ilvl")
+    ilvl_el.set(qn("w:val"), str(ilvl))
 
-    numId_el = OxmlElement('w:numId')
-    numId_el.set(qn('w:val'), str(num_id))
+    numId_el = OxmlElement("w:numId")
+    numId_el.set(qn("w:val"), str(num_id))
 
     numPr.append(ilvl_el)
     numPr.append(numId_el)
@@ -194,7 +200,7 @@ def split_into_sections(blocks: List[Block]) -> List[List[Block]]:
     started = False
 
     for block in blocks:
-        if isinstance(block, Paragraph) and block.style.name == 'Heading 1':
+        if isinstance(block, Paragraph) and block.style.name == "Heading 1":
             if current:
                 sections.append(current)
             current = [block]
@@ -230,13 +236,13 @@ def parse_requirement_start(block: Paragraph):
         return None
 
     req_id = m.group(1)
-    inline_text = (m.group(2) or '').strip()
+    inline_text = (m.group(2) or "").strip()
 
     return {
-        'id': req_id,
-        'level': lvl - 1,   # Heading 2..5 => Req Level 1..4
-        'inline_text': inline_text,
-        'blocks': [],
+        "id": req_id,
+        "level": lvl - 1,  # Heading 2..5 => Req Level 1..4
+        "inline_text": inline_text,
+        "blocks": [],
     }
 
 
@@ -247,7 +253,9 @@ def section_has_requirements(sec: List[Block]) -> bool:
     return False
 
 
-def apply_style_or_fallback(p: Paragraph, desired_style: str, style_names: set, fallback: str = 'Normal') -> None:
+def apply_style_or_fallback(
+    p: Paragraph, desired_style: str, style_names: set, fallback: str = "Normal"
+) -> None:
     if desired_style in style_names:
         p.style = desired_style
     elif fallback in style_names:
@@ -260,7 +268,7 @@ def add_requirement_table(
     section_num_id: int,
     left_width_cm: float = 14.2,
     right_width_cm: float = 3.0,
-    font_size_pt: int = 11
+    font_size_pt: int = 11,
 ) -> None:
     """
     Add a borderless 2-column requirement table:
@@ -289,17 +297,17 @@ def add_requirement_table(
         first_block_done = False
 
         # If requirement had inline text on same line as TEST_xxxx
-        if req.get('inline_text'):
-            p = left.add_paragraph(req['inline_text'])
+        if req.get("inline_text"):
+            p = left.add_paragraph(req["inline_text"])
             apply_style_or_fallback(p, f"Req Level {req['level']}", style_names)
-            set_paragraph_numbering(p, section_num_id, req['level'] - 1)
+            set_paragraph_numbering(p, section_num_id, req["level"] - 1)
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             for r in p.runs:
                 r.font.size = Pt(font_size_pt)
             first_block_done = True
 
         # Add continuation paragraphs/tables under same requirement
-        for block in req['blocks']:
+        for block in req["blocks"]:
             if isinstance(block, Paragraph):
                 txt = normalize_text(block.text)
                 if not txt:
@@ -310,11 +318,13 @@ def add_requirement_table(
                 if not first_block_done:
                     # First content paragraph gets Req Level style and numbering
                     apply_style_or_fallback(p, f"Req Level {req['level']}", style_names)
-                    set_paragraph_numbering(p, section_num_id, req['level'] - 1)
+                    set_paragraph_numbering(p, section_num_id, req["level"] - 1)
                     first_block_done = True
                 else:
                     # Later continuation paragraphs keep original style if available
-                    original_style = block.style.name if block.style is not None else 'Normal'
+                    original_style = (
+                        block.style.name if block.style is not None else "Normal"
+                    )
                     apply_style_or_fallback(p, original_style, style_names)
 
                 p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -326,14 +336,14 @@ def add_requirement_table(
 
         # Safety fallback if there was no content after the ID
         if not first_block_done:
-            p = left.add_paragraph('')
+            p = left.add_paragraph("")
             apply_style_or_fallback(p, f"Req Level {req['level']}", style_names)
-            set_paragraph_numbering(p, section_num_id, req['level'] - 1)
+            set_paragraph_numbering(p, section_num_id, req["level"] - 1)
 
         # Right-hand ID cell
-        p_id = right.add_paragraph(req['id'])
-        if 'Normal' in style_names:
-            p_id.style = 'Normal'
+        p_id = right.add_paragraph(req["id"])
+        if "Normal" in style_names:
+            p_id.style = "Normal"
         p_id.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         for r in p_id.runs:
             r.font.size = Pt(font_size_pt)
@@ -346,7 +356,7 @@ def transform(
     out_path: str,
     left_width_cm: float = 14.2,
     right_width_cm: float = 3.0,
-    font_size_pt: int = 11
+    font_size_pt: int = 11,
 ) -> None:
     """
     Main transformation:
@@ -367,7 +377,7 @@ def transform(
         first = sec[0]
 
         # Anything before first Heading 1, or non-standard sections: copy as-is
-        if not (isinstance(first, Paragraph) and first.style.name == 'Heading 1'):
+        if not (isinstance(first, Paragraph) and first.style.name == "Heading 1"):
             for block in sec:
                 if isinstance(block, Paragraph):
                     append_paragraph_copy(out, block)
@@ -404,13 +414,13 @@ def transform(
                     continue
 
                 if current_req:
-                    current_req['blocks'].append(block)
+                    current_req["blocks"].append(block)
                 else:
                     append_paragraph_copy(out, block)
 
             else:
                 if current_req:
-                    current_req['blocks'].append(block)
+                    current_req["blocks"].append(block)
                 else:
                     append_table_copy(out, block)
 
