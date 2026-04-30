@@ -24,7 +24,7 @@ def run_comparison(input_path, output_path=None, id_columns=None, deleted_strike
     new_records = make_records(new_ws, "new", ids, max_col, config.header_rows)
     old_records = make_records(old_ws, "old", ids, max_col, config.header_rows)
     output_records = compare_records(new_records, old_records, ids, max_col, config.deleted_strike_mode)
-    write_output(wb, new_ws, old_ws, output_records, max_col, config)
+    write_output(wb, new_ws, old_ws, output_records, max_col, config, ids)
     out = output_path or default_output_path(input_path)
     wb.save(out)
     return {

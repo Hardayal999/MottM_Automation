@@ -53,3 +53,16 @@ Alternative, stricter minimal highlighting:
 ```powershell
 python run_compare.py "file.xlsx" --id-columns A,D,G,J --deleted-strike-mode missing-level
 ```
+
+
+## Repeated top-level ID formatting
+
+The output sheet now makes repeated root/top-level IDs easier to scan. The first occurrence of a root ID stays normal, while consecutive repeated root IDs are shown in a softer grey font with lighter borders. This is dynamic and uses the first column listed in `--id-columns`.
+
+Example:
+
+```powershell
+python run_compare.py "traceability_matrix_export.xlsx" --id-columns A,D,G,J
+```
+
+Here, column A is treated as the root/top-level ID column. If another project uses `B,E,H,K`, then column B becomes the root/top-level ID column automatically.

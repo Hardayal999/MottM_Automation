@@ -11,3 +11,5 @@ class CompareConfig:
     deleted_font: str = "9C0006"
     deleted_strike_mode: str = "relationship"
     header_rows: int = 1
+    repeated_root_font: str = "A6A6A6"
+    repeated_root_border: str = "D9D9D9"

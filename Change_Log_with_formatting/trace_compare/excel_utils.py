@@ -71,3 +71,40 @@ def apply_change_style(cell, fill_hex, font_hex, strike=False):
 
 def is_empty_row(values):
     return all(v is None or str(v).strip() == "" for v in values)
+
+from openpyxl.styles import Side, Border
+
+def soften_repeated_root_cell(cell, font_hex="A6A6A6", border_hex="D9D9D9"):
+    base = cell.font.copy() if cell.font else Font()
+    cell.font = Font(
+        name=base.name,
+        sz=base.sz,
+        b=base.b,
+        i=base.i,
+        vertAlign=base.vertAlign,
+        underline=base.underline,
+        strike=base.strike,
+        color=font_hex,
+        charset=base.charset,
+        family=base.family,
+        scheme=base.scheme,
+        outline=base.outline,
+        shadow=base.shadow,
+        condense=base.condense,
+        extend=base.extend,
+    )
+    light = Side(style="thin", color=border_hex)
+    existing = cell.border.copy() if cell.border else Border()
+    cell.border = Border(
+        left=light,
+        right=existing.right,
+        top=light,
+        bottom=light,
+        diagonal=existing.diagonal,
+        diagonal_direction=existing.diagonal_direction,
+        diagonalUp=existing.diagonalUp,
+        diagonalDown=existing.diagonalDown,
+        outline=existing.outline,
+        vertical=existing.vertical,
+        horizontal=existing.horizontal,
+    )
