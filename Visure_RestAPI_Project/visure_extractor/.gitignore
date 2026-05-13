@@ -1,0 +1,17 @@
+# Credentials — NEVER commit
+.env
+
+# Python cruft
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Output Excel files (regenerated each run)
+output/
+*.xlsx
+
+# IDE
+.vscode/
+.idea/
