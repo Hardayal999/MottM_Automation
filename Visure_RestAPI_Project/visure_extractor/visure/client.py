@@ -6,14 +6,16 @@ the Visure API. Everything else works with Python objects returned from here.
 
 Design principles
 -----------------
-1. ONLY GET requests for reading data. The one exception is POST /authenticate
-   and POST /project/current — both required by Visure even to *read* anything.
-   We use NO write endpoints (no POST/PUT/DELETE on requirements data).
+1. Read-only against requirements data. The POSTs we DO make are:
+   - /authenticate            (sends credentials, gets a token)
+   - /project/current         (session pin — no data changes)
+   - /elements/linkeditems    (bulk READ — POST because it sends a list of IDs
+                               in the body; doesn't write anything)
+   - /logout                  (clean exit)
+   No POST, PUT, or DELETE against requirements, attributes, or links.
 
-2. Session-based: Visure pins API calls to a "current project". You authenticate,
-   then call POST /project/current with {project, group}, and then subsequent
-   /specifications calls return specs for that project. We hide this behind
-   set_current_project() so the caller doesn't have to remember.
+2. Session-based. After authenticate() and set_current_project() the rest of
+   the endpoints answer in the context of that project.
 
 3. Every method raises a clear exception on failure. The caller decides what
    to do (retry, log, abort). No silent failures.
@@ -29,7 +31,7 @@ from visure.config import settings
 
 
 # ---------------------------------------------------------------------------
-# Custom exceptions — so callers can tell auth errors from other errors
+# Custom exceptions
 # ---------------------------------------------------------------------------
 
 class VisureAPIError(Exception):
@@ -46,23 +48,15 @@ class VisureAuthError(VisureAPIError):
 
 @dataclass
 class Project:
-    """A Visure project as returned by /authenticate or /projects.
-
-    We pull out just the fields we actually use elsewhere. The raw dict
-    is kept in `raw` in case we need anything else later.
-    """
+    """A Visure project as returned by /authenticate or /projects."""
     id: int
     name: str
     code: str | None
-    group_id: int | None    # the first group we have access to in this project
+    group_id: int | None
     raw: dict
 
     @classmethod
     def from_dict(cls, d: dict) -> "Project":
-        # A project from /authenticate carries a `groups` array. We need at
-        # least one group to call /project/current. We pick the first.
-        # If a project has multiple groups and the user needs to choose,
-        # we'll add a prompt later — out of scope for v1.
         groups = d.get("groups") or d.get("projectGroups") or []
         group_id = groups[0].get("id") if groups else None
         return cls(
@@ -93,30 +87,21 @@ class Specification:
 
 
 # ---------------------------------------------------------------------------
-# The client itself
+# The client
 # ---------------------------------------------------------------------------
 
 class VisureClient:
-    """Thin wrapper around requests.Session for the Visure API.
+    """Thin wrapper around requests.Session for the Visure API."""
 
-    Use as a context manager so the session is logged out cleanly:
-
-        with VisureClient() as client:
-            client.authenticate()
-            projects = client.list_projects_from_auth()
-    """
+    # Batch size for the bulk linked-items POST. The endpoint accepts a list
+    # of element IDs in the body, but very large bodies can hit URL length
+    # or timeout limits. 100 is a safe, fast batch size — adjust if needed.
+    LINK_BATCH_SIZE = 100
 
     def __init__(self, base_url: str | None = None, timeout: int = 30):
-        # base_url defaults to whatever's in .env. Allowing override makes
-        # the class testable against a mock server.
         self.base_url = (base_url or settings.base_url).rstrip("/")
         self.timeout = timeout
-
-        # requests.Session reuses the underlying TCP connection across calls.
-        # For ~25 API calls in a row, this is a real speedup.
         self.session = requests.Session()
-
-        # Filled in by authenticate()
         self._token: str | None = None
         self._user_payload: dict | None = None
 
@@ -126,55 +111,47 @@ class VisureClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        # Try to log out cleanly. Don't blow up if it fails — we're exiting anyway.
         try:
             self.logout()
         except Exception:
             pass
         self.session.close()
 
-    # ----- The actual HTTP plumbing ----------------------------------------
+    # ----- HTTP plumbing ---------------------------------------------------
 
     def _url(self, path: str) -> str:
-        """Join the base URL with an API path."""
         return f"{self.base_url}{path}"
 
     def _headers(self) -> dict[str, str]:
-        """Build request headers, including the bearer token if we have one."""
         h = {"Accept": "application/json", "Content-Type": "application/json"}
         if self._token:
             h["Authorization"] = f"Bearer {self._token}"
         return h
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        """All read calls go through here. Centralised error handling."""
         url = self._url(path)
         response = self.session.get(
-            url,
-            headers=self._headers(),
-            params=params,
-            timeout=self.timeout,
+            url, headers=self._headers(), params=params, timeout=self.timeout,
         )
         self._raise_for_status(response, method="GET", path=path)
-        # Some endpoints return 200 with empty body. Guard against that.
         if not response.content:
             return None
         return response.json()
 
-    def _post(self, path: str, json_body: dict | None = None) -> Any:
-        """Used ONLY for /authenticate, /project/current, and /logout.
-        No requirement-modifying POSTs exist anywhere in this client."""
+    def _post(self, path: str, json_body: Any = None) -> Any:
+        """Used for /authenticate, /project/current, /logout, and the bulk
+        linked-items READ endpoint. The bulk endpoint takes a JSON array, not
+        a dict, so json_body is typed as Any."""
         url = self._url(path)
         response = self.session.post(
             url,
             headers=self._headers(),
-            json=json_body or {},
+            json=json_body if json_body is not None else {},
             timeout=self.timeout,
         )
         self._raise_for_status(response, method="POST", path=path)
         if not response.content:
             return None
-        # Some Visure endpoints reply with no body but return 200 — handle that.
         try:
             return response.json()
         except ValueError:
@@ -182,20 +159,15 @@ class VisureClient:
 
     @staticmethod
     def _raise_for_status(response: requests.Response, method: str, path: str) -> None:
-        """Turn HTTP errors into our exception types with useful messages."""
         if response.ok:
             return
-
-        # Trim the body so the error stays readable
         body_preview = (response.text or "")[:400]
-
         if response.status_code in (401, 403):
             raise VisureAuthError(
                 f"{method} {path} -> {response.status_code} {response.reason}\n"
                 f"Body: {body_preview}\n"
                 f"Likely cause: bad credentials, expired token, or insufficient permissions."
             )
-
         raise VisureAPIError(
             f"{method} {path} -> {response.status_code} {response.reason}\n"
             f"Body: {body_preview}"
@@ -204,15 +176,7 @@ class VisureClient:
     # ----- Authentication --------------------------------------------------
 
     def authenticate(self) -> dict:
-        """POST /api/v1/authenticate.
-
-        Returns the full User14 payload. The payload contains:
-          - accessToken.token   <- the bearer token for subsequent calls
-          - accessToken.refreshToken
-          - projects[]          <- the projects this account can see (with groups)
-
-        We store the token on `self` for transparent use by later calls.
-        """
+        """POST /api/v1/authenticate. Stores the bearer token on self."""
         body = {
             "username": settings.username,
             "password": settings.password,
@@ -223,8 +187,6 @@ class VisureClient:
         if not payload:
             raise VisureAuthError("Authenticate returned empty response.")
 
-        # The token can live in payload["accessToken"]["token"] OR at top level
-        # depending on Visure version. We handle both.
         token = None
         access_token_obj = payload.get("accessToken")
         if isinstance(access_token_obj, dict):
@@ -253,18 +215,11 @@ class VisureClient:
     # ----- Projects --------------------------------------------------------
 
     def list_projects_from_auth(self) -> list[Project]:
-        """Return the projects array from the /authenticate response.
-
-        This is a freebie — the auth response already contains the project
-        list with groups. No extra API call needed. If for some reason auth
-        didn't include projects, fall back to GET /api/v1/projects.
-        """
         if not self._user_payload:
             raise VisureAPIError("Must call authenticate() before listing projects.")
 
         raw_projects = self._user_payload.get("projects")
         if not raw_projects:
-            # Fallback: explicit list endpoint
             raw_projects = self._get("/api/v1/projects") or []
 
         return [Project.from_dict(p) for p in raw_projects]
@@ -272,9 +227,8 @@ class VisureClient:
     def set_current_project(self, project: Project) -> None:
         """POST /api/v1/project/current with {project, group}.
 
-        Visure is session-stateful: many read endpoints (like /specifications)
-        return data for whichever project is currently selected. You have to
-        explicitly pick one before listing its specs.
+        Visure is session-stateful: read endpoints (like /specifications)
+        return data for whichever project is currently selected.
         """
         if project.group_id is None:
             raise VisureAPIError(
@@ -287,16 +241,11 @@ class VisureClient:
     # ----- Specifications --------------------------------------------------
 
     def list_specifications(self) -> list[Specification]:
-        """GET /api/v1/specifications.
-
-        Returns specs for the CURRENTLY SELECTED project. Call
-        set_current_project() first. This is the session quirk we documented
-        in the README — Visure remembers the current project on the server side.
-        """
+        """GET /api/v1/specifications for the currently selected project."""
         raw = self._get("/api/v1/specifications") or []
         return [Specification.from_dict(s) for s in raw]
 
-    # ----- Requirements (elements) inside a spec ---------------------------
+    # ----- Elements --------------------------------------------------------
 
     def get_specification_items(
         self,
@@ -306,15 +255,46 @@ class VisureClient:
     ) -> list[dict]:
         """GET /api/v1/specification/{id}/items?includeAllAttributes=true.
 
-        This is the workhorse endpoint. ONE call returns the whole hierarchy
-        of elements (requirements + section headings) for a spec, with every
-        user-defined attribute already baked into each element.
-
-        The raw shape is a list of Element14 dicts. We hand the raw dicts to
-        the excel_writer to flatten — keeping API parsing concerns separate
-        from output-formatting concerns.
+        One call returns the whole hierarchy with every attribute baked in.
         """
         params = {
             "includeAllAttributes": "true" if include_all_attributes else "false",
         }
         return self._get(f"/api/v1/specification/{spec_id}/items", params=params) or []
+
+    # ----- Traceability links ----------------------------------------------
+
+    def get_link_types(self) -> list[dict]:
+        """GET /api/v1/linktypes for the currently selected project.
+
+        Returns the list of link type definitions (Derives, Verified By,
+        Satisfies, etc). We don't strictly need this for the export — the
+        link type name is already on each LinkedItem — but it's useful if
+        you ever want to validate or filter by type in Power BI.
+        """
+        return self._get("/api/v1/linktypes") or []
+
+    def get_linked_items_bulk(self, element_ids: list[int]) -> list[dict]:
+        """POST /api/v1/elements/linkeditems with a JSON array of element IDs.
+
+        Returns one LinkedItem14 dict per link found. Each link has:
+            sourceItemID, targetItemID, linkType, isSuspect, direction,
+            code (target's code), name (target's name), project, etc.
+
+        We batch the IDs in groups of LINK_BATCH_SIZE to keep request bodies
+        modest. The endpoint itself uses POST only because it needs to send a
+        list in the body — it doesn't modify any data on the server.
+
+        Empty input → empty output, no API call wasted.
+        """
+        if not element_ids:
+            return []
+
+        all_links: list[dict] = []
+        batch_size = self.LINK_BATCH_SIZE
+        for start in range(0, len(element_ids), batch_size):
+            batch = element_ids[start:start + batch_size]
+            result = self._post("/api/v1/elements/linkeditems", json_body=batch) or []
+            all_links.extend(result)
+
+        return all_links
