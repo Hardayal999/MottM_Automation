@@ -1,7 +1,7 @@
 # Visure API Extractor — Python dependencies
 # Install with: pip install -r requirements.txt
 
-requests>=2.31.0          # HTTP client for talking to the Visure API
-python-dotenv>=1.0.0      # Loads credentials from .env file
-pandas>=2.0.0             # Tabular data handling (Element list -> DataFrame)
-openpyxl>=3.1.0           # Writes the .xlsx file (pandas uses this engine)
+requests         # HTTP client for talking to the Visure API
+python-dotenv     # Loads credentials from .env file
+pandas          # Tabular data handling (Element list -> DataFrame)
+openpyxl          # Writes the .xlsx file (pandas uses this engine)
