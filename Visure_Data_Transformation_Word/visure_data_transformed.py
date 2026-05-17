@@ -447,6 +447,7 @@ def generate_output_path(input_path: str) -> str:
 
 
 def main() -> None:
+    print(f'Debug sys.argv = {sys.argv}')
     if len(sys.argv) < 2:
         print('Usage: python visure_transform_final_test.py "C:\\path\\input.docx"')
         sys.exit(1)

@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "name": "Debug Visure Transform",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/visure_data_transformed.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": ["${workspaceFolder}/Product_Requirements_HARD_ONE.docx"],
+           
+        }
+    ]
+}
